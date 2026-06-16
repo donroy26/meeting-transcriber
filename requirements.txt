@@ -1,0 +1,29 @@
+# meeting-transcriber dependencies
+# Install in a venv. See README.md for the CUDA-specific faster-whisper install
+# path — install that first before running plain pip install -r requirements.txt.
+
+# Core transcription — CUDA build; see README for ctranslate2 wheel order
+faster-whisper==1.2.1
+ctranslate2==4.8.0
+nvidia-cuda-runtime-cu12==12.9.79
+nvidia-cublas-cu12==12.9.2.10
+nvidia-cudnn-cu12==9.23.1.3
+
+# Audio capture: WASAPI loopback support on Windows
+pyaudiowpatch==0.2.12.8
+
+# Global hotkey (Python-native; no AutoHotkey install required)
+keyboard==0.13.5
+
+# System tray indicator
+pystray==0.19.5
+
+# Icon image rendering for tray
+Pillow==12.2.0
+
+# TOML config parsing (stdlib tomllib on Python 3.11+; tomli is the backport)
+tomli>=2.0.0; python_version < "3.11"
+
+# numpy is a transitive dependency of faster-whisper / ctranslate2; listed
+# explicitly to keep the version visible and resolvable by pip.
+numpy==2.4.6

@@ -1,0 +1,27 @@
+# meeting-transcriber — machine config template
+# Copy to config.toml and fill in values for THIS machine.
+# Do NOT commit config.toml — it contains machine-specific paths.
+
+[paths]
+# Absolute path to the Meetings/ folder in your Obsidian vault.
+# Use forward slashes. Example: "D:/Obsidian/MyVault/Meetings"
+vault_meetings_path = ""
+
+# Fallback folder when vault_meetings_path is missing or unreachable.
+# Leave empty to use a Meetings/ folder created beside the scripts.
+fallback_folder = ""
+
+[audio]
+# Name of the WASAPI loopback output device used for system-audio capture.
+# This is what captures callers / PC audio.
+# Run:  python capture.py --list-devices
+# to see available names.
+# Leave empty to capture ALL loopback devices found at recording start. This is
+# recommended when you sometimes use headphones and sometimes use speakers.
+# Set a specific name only if you need to force one output device.
+output_device_name = ""
+
+[hotkey]
+# Global hotkey that toggles recording on/off.
+# Format: key name or combo, e.g. "ctrl+shift+r", "f9", "alt+shift+r".
+hotkey = "ctrl+shift+r"
