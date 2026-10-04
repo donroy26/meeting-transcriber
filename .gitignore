@@ -18,3 +18,8 @@ dist/
 .env
 *.key
 *.pem
+Recovery/
+Clips/
+assets/
+*.srt
+*.lnk
