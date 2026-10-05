@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 import wave
 from pathlib import Path
 from typing import Union
@@ -38,7 +39,10 @@ from faster_whisper import WhisperModel
 
 MODEL_SIZE = "large-v3-turbo"
 DEVICE = "cuda"
-COMPUTE_TYPE = "float16"
+# int8_float16 halves VRAM vs float16 with negligible quality difference for
+# meeting speech — headroom matters: a full GPU stalls Windows desktop
+# compositing (system-wide freezes observed 2026-07-02).
+COMPUTE_TYPE = "int8_float16"
 
 # Beam size for decoding; 5 is the faster-whisper default.
 BEAM_SIZE = 5
@@ -60,33 +64,86 @@ CONDITION_ON_PREVIOUS_TEXT = True
 
 # Module-level model singleton — loaded once on first call, reused for all subsequent calls.
 _model: WhisperModel | None = None
+_model_lock = threading.Lock()
 
 
 def _get_model() -> WhisperModel:
     global _model
-    if _model is None:
-        _model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
-    return _model
+    with _model_lock:
+        if _model is None:
+            try:
+                _model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
+            except Exception as exc:
+                # GPU unavailable (driver update, VRAM exhausted, other machine):
+                # degrade to CPU int8 rather than losing the meeting.
+                print(
+                    f"[transcribe] WARNING: CUDA model load failed ({exc}); "
+                    "falling back to CPU int8 — transcription will be slower.",
+                    file=sys.stderr,
+                )
+                _model = WhisperModel(MODEL_SIZE, device="cpu", compute_type="int8")
+        return _model
 
 
-def transcribe(audio: Union[np.ndarray, str]) -> tuple[str, float]:
+def preload_model() -> None:
+    """Load the model eagerly (called from a startup thread in main.py)."""
+    _get_model()
+
+
+def transcribe(
+    audio: Union[np.ndarray, str],
+    diarization_cfg: dict | None = None,
+    engine: str = "faster-whisper",
+    language: str | None = None,
+) -> tuple[str, float]:
     """
-    Transcribe audio to a continuous text string.
+    Transcribe audio to a text string, optionally with speaker labels.
 
     Parameters
     ----------
     audio
         Float32 numpy array at 16 kHz mono **or** an absolute path to a WAV file
         (returned by ``AudioCapture.stop()`` on long-session recordings).
+    diarization_cfg
+        The ``[diarization]`` config table. When ``enabled`` is true and
+        pyannote.audio is installed with a valid HuggingFace token, the
+        transcript is grouped into speaker turns. Any diarization failure
+        falls back to the plain unlabeled transcript.
+    engine
+        ``"faster-whisper"`` (default) or ``"whisperx"``. WhisperX adds
+        wav2vec2 forced alignment for tighter word timestamps and uses its own
+        diarization assignment. If the WhisperX path fails for any reason the
+        faster-whisper path runs instead — a meeting is never lost to it.
+    language
+        ISO language code to force (e.g. ``"en"``). ``None`` or empty string
+        auto-detects from the first 30s — which can misfire on a quiet opening
+        and lock the whole meeting to a wrong language. Pin it when the spoken
+        language is known.
 
     Returns
     -------
     transcript : str
-        Full continuous transcript with no speaker labels.
+        Full transcript; speaker-labeled turns when diarization succeeds.
     duration : float
         Measured audio duration in seconds.
     """
+    diarization_cfg = diarization_cfg or {}
+    language = language or None  # normalize empty string to auto-detect
+
+    if engine == "whisperx":
+        try:
+            import whisperx_engine
+
+            return whisperx_engine.transcribe_whisperx(audio, diarization_cfg, language)
+        except Exception as exc:
+            print(
+                f"[transcribe] WARNING: whisperx engine failed ({exc}); "
+                "falling back to faster-whisper.",
+                file=sys.stderr,
+            )
+
     model = _get_model()
+    want_diarization = bool(diarization_cfg.get("enabled", False))
 
     if isinstance(audio, str):
         duration = _wav_duration(audio)
@@ -94,23 +151,47 @@ def transcribe(audio: Union[np.ndarray, str]) -> tuple[str, float]:
     else:
         duration = float(len(audio)) / 16_000.0
         audio_input = audio
+        if len(audio) == 0:
+            return "", 0.0
 
     segments, info = model.transcribe(
         audio_input,
         beam_size=BEAM_SIZE,
-        language=None,          # auto-detect; covers mixed-language meetings
+        language=language,      # None auto-detects; a pinned code skips detection
         vad_filter=VAD_FILTER,
         vad_parameters=VAD_PARAMETERS,
         condition_on_previous_text=CONDITION_ON_PREVIOUS_TEXT,
-        word_timestamps=False,  # segment-level text only; no per-word timing needed
+        word_timestamps=want_diarization,  # per-word timing only needed for diarization
     )
 
-    # Drain the generator; joins all segment text.
-    transcript = " ".join(seg.text.strip() for seg in segments).strip()
+    # Drain the generator (transcription happens lazily as it is consumed).
+    segment_list = list(segments)
+    transcript = " ".join(seg.text.strip() for seg in segment_list).strip()
+
+    if not transcript:
+        print(
+            "[transcribe] WARNING: transcription produced an empty transcript — "
+            "the VAD found no speech in this audio.",
+            file=sys.stderr,
+        )
 
     # Prefer the duration reported by the model (accounts for VAD trimming).
     if hasattr(info, "duration") and info.duration:
         duration = float(info.duration)
+
+    if want_diarization and transcript:
+        try:
+            from diarize import label_speakers
+
+            labeled = label_speakers(audio_input, segment_list, diarization_cfg)
+            if labeled:
+                transcript = labeled
+        except Exception as exc:
+            print(
+                f"[transcribe] WARNING: diarization failed ({exc}); "
+                "writing plain transcript instead.",
+                file=sys.stderr,
+            )
 
     return transcript, duration
 

@@ -76,7 +76,7 @@ def write_note(
     target_dir, used_fallback = _resolve_target(vault_meetings_path, fallback_folder)
     os.makedirs(target_dir, exist_ok=True)
 
-    out_path = os.path.join(target_dir, filename)
+    out_path = _unique_path(target_dir, filename)
     with open(out_path, "w", encoding="utf-8") as fh:
         fh.write(content)
 
@@ -98,19 +98,23 @@ def write_failure_note(
     fallback_folder: str,
     attendees: str = "",
     operator_notes: str = "",
+    audio_path: str | None = None,
 ) -> str:
     """
     Write a placeholder note when transcription fails so the session is recoverable.
 
-    The transcript section records the failure reason.  The retained audio temp file
-    (whose path the caller should also surface to the user) enables manual recovery.
+    The transcript section records the failure reason and, when available, the
+    path of the retained audio file for manual re-transcription.
     Returns the path of the placeholder note written.
     """
+    if audio_path:
+        recovery_line = f"Raw audio retained for manual re-transcription:\n{audio_path}"
+    else:
+        recovery_line = "No audio file could be retained for this session."
     placeholder_transcript = (
         f"[TRANSCRIPTION FAILED]\n"
         f"Error: {error_description}\n\n"
-        f"The raw audio temp file has been retained for manual re-transcription.\n"
-        f"See console output for the temp file path."
+        f"{recovery_line}"
     )
     return write_note(
         transcript=placeholder_transcript,
@@ -121,6 +125,17 @@ def write_failure_note(
         attendees=attendees,
         operator_notes=operator_notes,
     )
+
+
+def _unique_path(directory: str, filename: str) -> str:
+    """Never overwrite an existing note: append -2, -3, … on collision."""
+    base, ext = os.path.splitext(filename)
+    candidate = os.path.join(directory, filename)
+    counter = 2
+    while os.path.exists(candidate):
+        candidate = os.path.join(directory, f"{base}-{counter}{ext}")
+        counter += 1
+    return candidate
 
 
 def _format_attendees(attendees: str) -> str:

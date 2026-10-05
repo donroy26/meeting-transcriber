@@ -1,0 +1,17 @@
+# Optional dependencies for speaker diarization and the whisperx engine
+# (see [diarization] and [transcription] in config.toml).
+#
+# Install order matters — torch must come from the CUDA index first:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128
+#   pip install -r requirements-diarization.txt
+#   pip install whisperx --no-deps
+#
+# whisperx MUST be installed with --no-deps: it pins ctranslate2==4.4.0 /
+# faster-whisper==1.0.0 / pyannote.audio==3.1.1, which have no Python 3.14
+# wheels and would break the working CUDA stack. whisperx_engine.py contains
+# the small compatibility shims that let it run against these newer versions.
+pyannote.audio
+pandas
+transformers
+nltk
+omegaconf

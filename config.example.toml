@@ -4,7 +4,7 @@
 
 [paths]
 # Absolute path to the Meetings/ folder in your Obsidian vault.
-# Use forward slashes. Example: "D:/Obsidian/MyVault/Meetings"
+# Use forward slashes. Example: "C:/Users/yourname/Obsidian/MyVault/Meetings"
 vault_meetings_path = ""
 
 # Fallback folder when vault_meetings_path is missing or unreachable.
@@ -23,5 +23,51 @@ output_device_name = ""
 
 [hotkey]
 # Global hotkey that toggles recording on/off.
-# Format: key name or combo, e.g. "ctrl+shift+r", "f9", "alt+shift+r".
+# Format: zero or more modifiers plus one main key, joined with "+".
+#   Modifiers: ctrl (or control), shift, alt, win (or windows)
+#   Main key:  a single letter or digit (a-z, 0-9)
+#              a function key f1-f24
+#              space, pause, insert, delete, home, end, pageup, pagedown, esc
+# Examples: "ctrl+shift+r", "f9", "alt+shift+r", "ctrl+alt+space".
+# The combo is registered exclusively with Windows, so pick one no other app
+# owns — if it is already taken the app logs the conflict, shows a tray
+# notification, and you start/stop from the tray menu instead.
 hotkey = "ctrl+shift+r"
+
+[transcription]
+# Engine: "faster-whisper" (default) or "whisperx".
+# Both run the same Whisper large-v3-turbo model locally on the GPU.
+# whisperx adds wav2vec2 forced alignment (tighter word timestamps) and its own
+# diarization assignment. If the whisperx path fails for any reason, the app
+# automatically falls back to faster-whisper for that meeting.
+engine = "faster-whisper"
+# Language code to force (e.g. "en"). Whisper's auto-detect (empty "") samples
+# only the first 30s and can lock the whole meeting to the wrong language on a
+# quiet/muffled opening — producing hallucinated foreign text. Pin the language
+# you actually speak to skip detection entirely. Empty "" = auto-detect.
+language = "en"
+
+[recovery]
+# Keep each meeting's audio on disk for this many days after a successful
+# transcription so a garbled transcript can be re-run from the source audio.
+# 0 = delete immediately on success. Audio is 16 kHz mono (~67 MB/hour).
+# Files older than retain_audio_days are pruned automatically.
+retain_audio_days = 7
+# Folder for retained audio. Empty = a Recovery/audio folder beside the scripts.
+audio_folder = ""
+
+[diarization]
+# Speaker diarization (labels transcript turns as Speaker 1 / Speaker 2 / ...).
+# Requires extra packages:  pip install -r requirements-diarization.txt
+# and a HuggingFace token with the pipeline model's terms accepted:
+#   1. Create a (free) token at https://huggingface.co/settings/tokens
+#   2. Accept terms at https://huggingface.co/pyannote/speaker-diarization-3.1
+#      and https://huggingface.co/pyannote/segmentation-3.0
+# If diarization fails for any reason, the plain transcript is written instead.
+# hf_token may stay empty if the HF_TOKEN environment variable is set.
+enabled = false
+hf_token = ""
+# Pipeline model; accept its terms on huggingface.co before first use.
+model = "pyannote/speaker-diarization-community-1"
+# Exact number of speakers if known ahead of time; 0 = auto-detect.
+num_speakers = 0
