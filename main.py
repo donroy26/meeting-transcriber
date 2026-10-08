@@ -35,7 +35,10 @@ import numpy as np
 import pystray
 from PIL import Image, ImageDraw
 
-import hotkey
+if sys.platform == "win32":
+    import hotkey  # Win32 RegisterHotKey
+else:
+    import hotkey_mac as hotkey  # pynput event tap (needs Accessibility)
 from activity_overlay import ActivityOverlay
 from capture import (
     SAMPLE_RATE,
@@ -43,8 +46,9 @@ from capture import (
     retain_session_audio,
     save_recovery_wav,
 )
-from hotkey import HotkeyListener
 from note_writer import write_failure_note, write_note
+
+HotkeyListener = hotkey.HotkeyListener
 
 # -------------------------------------------------------------------- config
 
@@ -747,6 +751,10 @@ def _warm_model() -> None:
             import whisperx_engine
 
             whisperx_engine._get_model()
+        elif engine == "mlx":
+            import mlx_engine
+
+            mlx_engine._get_model()
         else:
             import transcribe
 
@@ -822,8 +830,16 @@ def main() -> None:
     else:
         log("[main] Ready: tray menu live (no hotkey), model warming in background.")
 
-    # pystray.Icon.run() blocks the main thread on Windows (required by Win32 message loop).
-    _tray.run(setup=_on_tray_ready)
+    if sys.platform == "darwin":
+        # Cocoa and Tk both demand the main thread. Tk's mainloop drives the
+        # NSApplication run loop; pystray's status item hangs off that same
+        # NSApplication, which already existed because _overlay.start() built
+        # the Tk windows before the Icon above was constructed.
+        _tray.run_detached(setup=_on_tray_ready)
+        _overlay.mainloop()
+    else:
+        # pystray.Icon.run() blocks the main thread on Windows (required by Win32 message loop).
+        _tray.run(setup=_on_tray_ready)
 
     if _listener is not None:
         _listener.stop()

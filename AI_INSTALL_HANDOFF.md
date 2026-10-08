@@ -1,6 +1,9 @@
 # Meeting Transcriber: Install Handoff for AI
 
-You are installing a local Windows meeting transcriber on another PC.
+You are installing a local meeting transcriber on another machine. The body of
+this document is the Windows procedure. For a Mac, read the **macOS** section at
+the end; it replaces the install, run, and troubleshooting steps, while the
+Configure, Workflow, and Acceptance Test sections apply unchanged.
 
 ## What This Bundle Does
 
@@ -198,3 +201,73 @@ Set `output_device_name` to the correct `[LOOPBACK]` device in `config.toml`.
 ### App crashes
 
 Read the newest file in `Logs/`. The current build logs Python tracebacks and native Windows access violations.
+
+## macOS
+
+Same app, same `config.toml`, same output. Differences: no CUDA (Apple Silicon
+uses the `mlx` engine on the GPU; Intel runs faster-whisper on the CPU), no
+WASAPI loopback (call audio is routed through the BlackHole virtual device),
+hotkey via a Quartz event tap (needs Accessibility), and the tray is a menu bar
+icon.
+
+### Target requirements
+
+- macOS 13+ on Apple Silicon (Intel works, CPU-only, slow).
+- Homebrew installed.
+- Python 3.13+ **with Tk**: `brew install python@3.13 python-tk@3.13`, or the
+  python.org installer.
+- Internet during install for packages, BlackHole, and the model download.
+
+### Install
+
+```bash
+chmod +x install-mac.sh
+./install-mac.sh --vault "/Users/NAME/Obsidian/MyVault/Meetings"
+```
+
+Flags `--device`, `--hotkey`, `--skip-model-download` are optional. The script
+installs `portaudio` and the `blackhole-2ch` cask via Homebrew, creates
+`.venv`, installs `requirements-mac.txt`, installs `mlx-whisper` on Apple
+Silicon and sets `engine = "mlx"`, writes `config.toml`, prints the device list,
+and loads the model once. If the device list has no `[LOOPBACK]` entry, reboot
+and rerun: BlackHole is a kernel audio driver and may not appear until then.
+
+### Route call audio through BlackHole (one time, user does this in the GUI)
+
+1. Audio MIDI Setup → **+** → **Create Multi-Output Device**.
+2. Tick the real speakers/headset and **BlackHole 2ch**; real output on top.
+3. System Settings → Sound → Output → the Multi-Output Device.
+4. Leave Input as the microphone. Never set Input to BlackHole.
+
+### Permissions (first run)
+
+- Microphone: macOS prompts automatically; accept.
+- Accessibility: System Settings → Privacy & Security → Accessibility → enable
+  Terminal (or whatever launches Python). Without it the hotkey never fires;
+  the app notifies about this at startup and keeps working from the menu bar
+  menu. After granting: menu bar icon → **Re-register hotkey**.
+
+### Run
+
+Double-click `Start Meeting Transcriber.command`, or:
+
+```bash
+.venv/bin/python main.py
+```
+
+Start at login: System Settings → General → Login Items → add the `.command`
+file.
+
+### Common problems
+
+- **Hotkey does not fire:** Accessibility not granted to Terminal. Grant, then
+  Re-register hotkey.
+- **Mic-only recording:** BlackHole missing (reboot) or Output is not the
+  Multi-Output Device. Check `.venv/bin/python capture.py --list-devices`.
+- **Transcription very slow:** `engine` is `faster-whisper` on the CPU. On Apple
+  Silicon run `.venv/bin/python -m pip install mlx-whisper` and set
+  `engine = "mlx"`.
+- **`_tkinter` import error:** install `python-tk@<version>` matching the venv's
+  Python and recreate `.venv`.
+- **Menu bar icon or notes window misbehaves:** Tk and the menu bar share the
+  main thread on macOS (see `main.py`). Read the newest file in `Logs/`.

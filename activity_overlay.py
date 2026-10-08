@@ -31,13 +31,26 @@ class ActivityOverlay:
         self._queue: queue.Queue[tuple[str, Any]] = queue.Queue(maxsize=512)
         self._thread: threading.Thread | None = None
         self._started = threading.Event()
+        self._root: tk.Tk | None = None  # macOS only: Tk lives on the main thread
 
     def start(self) -> None:
+        if sys.platform == "darwin":
+            # Cocoa is not thread-safe: Tk must own the main thread. Build the
+            # windows here (on the caller's thread); main() runs mainloop().
+            if self._root is None:
+                self._root = self._build()
+            return
         if self._thread and self._thread.is_alive():
             return
         self._thread = threading.Thread(target=self._run, daemon=True, name="activity-overlay")
         self._thread.start()
         self._started.wait(timeout=2)
+
+    def mainloop(self) -> None:
+        """macOS: run Tk on the calling (main) thread. Blocks until stop()."""
+        if self._root is None:
+            self._root = self._build()
+        self._root.mainloop()
 
     def _put_control(self, command: str, value: Any = None) -> None:
         """Queue a control message. Bounded wait: if the Tk thread has died the
@@ -78,7 +91,7 @@ class ActivityOverlay:
 
     def _run(self) -> None:
         try:
-            self._run_inner()
+            self._build().mainloop()
         except Exception as exc:
             # Make overlay-thread death visible in the log instead of silent.
             print(f"[overlay] ERROR: overlay thread died: {exc}", file=sys.stderr)
@@ -86,7 +99,9 @@ class ActivityOverlay:
         finally:
             self._started.set()  # never leave start() blocked on a dead thread
 
-    def _run_inner(self) -> None:
+    def _build(self) -> tk.Tk:
+        """Create the meter and notes windows and schedule the pump. Returns the
+        root; the caller runs ``mainloop()`` on whichever thread owns Tk."""
         root = tk.Tk()
         root.title("Meeting Transcriber")
         root.overrideredirect(True)
@@ -373,4 +388,4 @@ class ActivityOverlay:
             root.after(50, pump)
 
         root.after(50, pump)
-        root.mainloop()
+        return root

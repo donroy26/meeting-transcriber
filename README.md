@@ -1,10 +1,74 @@
 # Meeting Transcriber — Setup Guide
 
-Portable Windows script bundle. Records mic + system audio on a global hotkey toggle,
-transcribes locally on the NVIDIA GPU, and writes a summarization-ready markdown note
-to your Obsidian Meetings/ folder.
+Portable script bundle for Windows and macOS. Records mic + system audio on a global
+hotkey toggle, transcribes locally (NVIDIA GPU on Windows, Apple Silicon GPU on a Mac),
+and writes a summarization-ready markdown note to your Obsidian Meetings/ folder.
 
-**Requirements:** Windows 10/11 + NVIDIA GPU with current NVIDIA driver + Python 3.13/3.14. No cloud API. No internet during recording.
+**Requirements:** Windows 10/11 + NVIDIA GPU with current NVIDIA driver, **or** macOS 13+
+(Apple Silicon recommended) + Homebrew. Python 3.13/3.14. No cloud API. No internet
+during recording.
+
+Sections 1–7 are the Windows path. Mac users: read **macOS install** next, then
+sections 8–12, which apply to both.
+
+---
+
+## macOS install
+
+**Prerequisites:** [Homebrew](https://brew.sh) and Python 3.13+ with Tk
+(`brew install python@3.13 python-tk@3.13`, or the python.org installer, which
+bundles Tk).
+
+```bash
+chmod +x install-mac.sh && ./install-mac.sh
+```
+
+The installer adds PortAudio and the [BlackHole](https://existential.audio/blackhole/)
+virtual audio device via Homebrew, creates `.venv`, installs
+`requirements-mac.txt`, writes `config.toml`, and downloads the model. On
+Apple Silicon it also installs `mlx-whisper` and sets `engine = "mlx"`, which
+runs large-v3-turbo on the GPU. Intel Macs transcribe on the CPU, which is
+several times slower. Optional flags: `--vault PATH`, `--device NAME`,
+`--hotkey COMBO`, `--skip-model-download`.
+
+**Route call audio through BlackHole (one time).** macOS has no loopback
+capture, so the far side of a call reaches the recorder through a virtual
+device:
+
+1. Open **Audio MIDI Setup** (Spotlight → "Audio MIDI Setup").
+2. Click **+** (bottom-left) → **Create Multi-Output Device**.
+3. Tick your speakers or headset **and** **BlackHole 2ch**. Make the real
+   output the primary (top) device.
+4. **System Settings → Sound → Output** → choose that Multi-Output Device.
+   Leave **Input** as your normal microphone.
+
+You keep hearing the call through your speakers; BlackHole gets a copy, and the
+app records it alongside the mic. Known macOS limitation: the keyboard volume
+keys do not work while a Multi-Output Device is selected. Change volume in the
+app or switch Output back to the speakers outside meetings.
+
+**Permissions.** On first run macOS asks for **Microphone**. The hotkey needs
+**Accessibility** for whatever runs Python, normally Terminal: System Settings →
+Privacy & Security → Accessibility → enable Terminal. Until it is granted the app
+runs with the menu bar menu only and shows a notification saying so; after
+granting, choose **Re-register hotkey** from the menu bar icon.
+
+**Run:** double-click `Start Meeting Transcriber.command` (or
+`.venv/bin/python main.py`). The icon appears in the menu bar with the same
+colors and menu as the Windows tray. The hotkey is not exclusive on macOS, so
+pick a combo no app uses; the default `ctrl+shift+r` is safe.
+
+**Start at login:** System Settings → General → Login Items → **+** → pick
+`Start Meeting Transcriber.command`.
+
+| macOS symptom | Fix |
+|---------------|-----|
+| Hotkey never fires | Grant Accessibility to Terminal (above), then menu bar → **Re-register hotkey**. |
+| `[capture] No loopback devices opened; recording mic-only` | BlackHole not visible: reboot after the install, then check `python capture.py --list-devices` shows `BlackHole 2ch [LOOPBACK]`. |
+| Transcript has your voice but not the caller | Output is not the Multi-Output Device, or BlackHole is unticked in it. |
+| Caller audio recorded twice or mic missing | System **Input** was set to BlackHole. Set Input back to the microphone. |
+| `ModuleNotFoundError: _tkinter` | `brew install python-tk@3.13` (match your Python version) and rerun the installer. |
+| mlx install fails | Intel Mac or old macOS: the app still works on the CPU with `engine = "faster-whisper"`. |
 
 ---
 
@@ -262,11 +326,11 @@ separate downstream summarization system.
 
 ## 9. Transcription engine choice (optional)
 
-Two engines are available; switch in `config.toml` and compare:
+Three engines are available; switch in `config.toml` and compare:
 
 ```toml
 [transcription]
-engine = "faster-whisper"   # or "whisperx"
+engine = "faster-whisper"   # or "whisperx", or "mlx" (macOS Apple Silicon, see macOS install)
 ```
 
 Both run the same Whisper `large-v3-turbo` model locally on the GPU.

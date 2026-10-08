@@ -19,27 +19,35 @@ fallback_folder = ""
 # Leave empty to capture ALL loopback devices found at recording start. This is
 # recommended when you sometimes use headphones and sometimes use speakers.
 # Set a specific name only if you need to force one output device.
+# macOS: there are no loopback devices; call audio is routed through the
+# BlackHole virtual device (see README "macOS install"). Leave empty to capture
+# BlackHole, or name another virtual input device (e.g. "Loopback Audio").
 output_device_name = ""
 
 [hotkey]
 # Global hotkey that toggles recording on/off.
 # Format: zero or more modifiers plus one main key, joined with "+".
-#   Modifiers: ctrl (or control), shift, alt, win (or windows)
+#   Modifiers: ctrl (or control), shift, alt (or option), win (or windows, cmd)
 #   Main key:  a single letter or digit (a-z, 0-9)
-#              a function key f1-f24
+#              a function key f1-f24 (f1-f20 on macOS)
 #              space, pause, insert, delete, home, end, pageup, pagedown, esc
+#              (pause is Windows-only)
 # Examples: "ctrl+shift+r", "f9", "alt+shift+r", "ctrl+alt+space".
-# The combo is registered exclusively with Windows, so pick one no other app
+# Windows: the combo is registered exclusively, so pick one no other app
 # owns — if it is already taken the app logs the conflict, shows a tray
 # notification, and you start/stop from the tray menu instead.
+# macOS: the combo is not exclusive (the focused app also sees it), so pick one
+# nothing else uses. Needs the Accessibility permission for Terminal.
 hotkey = "ctrl+shift+r"
 
 [transcription]
-# Engine: "faster-whisper" (default) or "whisperx".
-# Both run the same Whisper large-v3-turbo model locally on the GPU.
+# Engine: "faster-whisper" (default), "whisperx", or "mlx".
+# All run the same Whisper large-v3-turbo model locally.
 # whisperx adds wav2vec2 forced alignment (tighter word timestamps) and its own
-# diarization assignment. If the whisperx path fails for any reason, the app
-# automatically falls back to faster-whisper for that meeting.
+# diarization assignment. mlx runs on the Apple Silicon GPU (macOS only;
+# install-mac.sh sets it automatically). faster-whisper uses the NVIDIA GPU on
+# Windows and the CPU on a Mac. If whisperx or mlx fails for any reason, the
+# app automatically falls back to faster-whisper for that meeting.
 engine = "faster-whisper"
 # Language code to force (e.g. "en"). Whisper's auto-detect (empty "") samples
 # only the first 30s and can lock the whole meeting to the wrong language on a

@@ -20,7 +20,16 @@ from collections.abc import Callable
 from math import gcd
 
 import numpy as np
-import pyaudiowpatch as pyaudio
+
+try:
+    import pyaudiowpatch as pyaudio  # Windows: PyAudio fork with WASAPI loopback
+except ImportError:
+    import pyaudio  # macOS/Linux: plain PyAudio; see _is_loopback()
+
+_IS_WINDOWS = sys.platform == "win32"
+# macOS has no loopback endpoints. A virtual output device shows up as an
+# ordinary input instead; BlackHole is the one install-mac.sh sets up.
+VIRTUAL_LOOPBACK_NAME = "blackhole"
 
 # Whisper expects 16 kHz mono float32.
 SAMPLE_RATE = 16_000
@@ -342,7 +351,7 @@ class AudioCapture:
         matches = []
         for i in range(self._pa.get_device_count()):
             info = self._pa.get_device_info_by_index(i)
-            if not info.get("isLoopbackDevice", False):
+            if not _is_loopback(info, None if capture_all else self._output_device_name):
                 continue
             if capture_all or self._output_device_name.lower() in info["name"].lower():
                 matches.append(info)
@@ -634,13 +643,23 @@ def retain_session_audio(
     return dest
 
 
+def _is_loopback(info: dict, wanted_name: str | None = None) -> bool:
+    """Windows: a WASAPI loopback endpoint. Elsewhere: an input device whose
+    name contains *wanted_name* (from config), or BlackHole when none is set."""
+    if _IS_WINDOWS:
+        return bool(info.get("isLoopbackDevice", False))
+    if int(info.get("maxInputChannels", 0)) < 1:
+        return False
+    return (wanted_name or VIRTUAL_LOOPBACK_NAME).lower() in info["name"].lower()
+
+
 def list_devices() -> None:
     """Print all audio devices — use to find output_device_name for config.toml."""
     pa = pyaudio.PyAudio()
     print("Available audio devices:")
     for i in range(pa.get_device_count()):
         info = pa.get_device_info_by_index(i)
-        tag = " [LOOPBACK]" if info.get("isLoopbackDevice") else ""
+        tag = " [LOOPBACK]" if _is_loopback(info) else ""
         print(
             f"  [{i:2d}] {info['name']}{tag}"
             f"  in:{info['maxInputChannels']}  out:{info['maxOutputChannels']}"

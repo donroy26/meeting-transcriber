@@ -35,14 +35,17 @@ def _add_nvidia_dll_dirs() -> None:
 
 _add_nvidia_dll_dirs()
 
+import ctranslate2
 from faster_whisper import WhisperModel
 
 MODEL_SIZE = "large-v3-turbo"
-DEVICE = "cuda"
+# No CUDA device (a Mac, or a PC without an NVIDIA GPU): run on the CPU in
+# int8. On Apple Silicon, engine = "mlx" in config.toml is the fast path.
+DEVICE = "cuda" if ctranslate2.get_cuda_device_count() > 0 else "cpu"
 # int8_float16 halves VRAM vs float16 with negligible quality difference for
 # meeting speech — headroom matters: a full GPU stalls Windows desktop
 # compositing (system-wide freezes observed 2026-07-02).
-COMPUTE_TYPE = "int8_float16"
+COMPUTE_TYPE = "int8_float16" if DEVICE == "cuda" else "int8"
 
 # Beam size for decoding; 5 is the faster-whisper default.
 BEAM_SIZE = 5
@@ -72,6 +75,7 @@ def _get_model() -> WhisperModel:
     with _model_lock:
         if _model is None:
             try:
+                print(f"[transcribe] Loading {MODEL_SIZE} on {DEVICE} ({COMPUTE_TYPE}).", flush=True)
                 _model = WhisperModel(MODEL_SIZE, device=DEVICE, compute_type=COMPUTE_TYPE)
             except Exception as exc:
                 # GPU unavailable (driver update, VRAM exhausted, other machine):
@@ -110,7 +114,8 @@ def transcribe(
         transcript is grouped into speaker turns. Any diarization failure
         falls back to the plain unlabeled transcript.
     engine
-        ``"faster-whisper"`` (default) or ``"whisperx"``. WhisperX adds
+        ``"faster-whisper"`` (default), ``"whisperx"``, or ``"mlx"`` (Apple
+        Silicon GPU via mlx-whisper; see mlx_engine.py). WhisperX adds
         wav2vec2 forced alignment for tighter word timestamps and uses its own
         diarization assignment. If the WhisperX path fails for any reason the
         faster-whisper path runs instead — a meeting is never lost to it.
@@ -138,6 +143,18 @@ def transcribe(
         except Exception as exc:
             print(
                 f"[transcribe] WARNING: whisperx engine failed ({exc}); "
+                "falling back to faster-whisper.",
+                file=sys.stderr,
+            )
+
+    if engine == "mlx":
+        try:
+            import mlx_engine
+
+            return mlx_engine.transcribe_mlx(audio, diarization_cfg, language)
+        except Exception as exc:
+            print(
+                f"[transcribe] WARNING: mlx engine failed ({exc}); "
                 "falling back to faster-whisper.",
                 file=sys.stderr,
             )

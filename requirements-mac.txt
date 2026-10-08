@@ -1,0 +1,25 @@
+# meeting-transcriber dependencies — macOS
+# Install in a venv via install-mac.sh, which also installs the Homebrew
+# prerequisites: portaudio (for PyAudio) and BlackHole (system-audio capture).
+# Windows uses requirements.txt instead.
+
+# Core transcription. ctranslate2 has no Metal backend, so on a Mac this runs
+# on the CPU in int8. On Apple Silicon the installer also adds mlx-whisper and
+# sets engine = "mlx" in config.toml, which runs the same model on the GPU.
+faster-whisper==1.2.1
+ctranslate2==4.8.0
+
+# Audio capture: plain PyAudio. BlackHole appears as an ordinary input device.
+# Needs the PortAudio library: brew install portaudio
+pyaudio==0.2.14
+
+# Global hotkey: Quartz event tap. Needs the Accessibility permission.
+pynput==1.8.1
+
+# Menu bar indicator + icon rendering
+pystray==0.19.5
+Pillow==12.2.0
+
+# numpy is a transitive dependency of faster-whisper / ctranslate2; listed
+# explicitly to keep the version visible and resolvable by pip.
+numpy==2.4.6
